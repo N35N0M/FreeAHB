@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Setting environment for AHB master simulations..."
+
+AHB_MASTER_HOME=$(git rev-parse --show-toplevel)/ahb_master
+AHB_MASTER_SCRATCH_DIR=$AHB_MASTER_HOME/tmp
+
+echo "AHB_MASTER_HOME set to $AHB_MASTER_HOME"
+echo "AHB_MASTER_SCRATCH_DIR to $AHB_MASTER_SCRATCH_DIR."

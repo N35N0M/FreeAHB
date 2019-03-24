@@ -16,19 +16,19 @@
  *****************************************************************************
  *
  * MIT License
- * 
+ *
  * Copyright (C) 2017 Revanth Kamaraj
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -38,42 +38,60 @@
  * SOFTWARE.
  *******************************************************************************/
 
-module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
+/* Customizations:
+ * - Add HPROT and HLOCK signals, which are missing signals from the standard.
+ * - Rename i_valid to i_valid and o_dav to o_ready to make it more clear what the signals are.
+*/
 
+// Stage 1 refers to the address and control stage.
+// Stage 2 refers to the data phase(s) that follow.
+module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
         /************************
          * AHB interface.
+         All control signals in AHB should be held constant in a burst of transfers.
          ************************/
-        input                   i_hclk,
-        input                   i_hreset_n,
-        output reg [31:0]       o_haddr,
-        output reg [2:0]        o_hburst,
-        output reg [1:0]        o_htrans,
-        output reg[DATA_WDT-1:0]o_hwdata,
-        output reg              o_hwrite,
-        output reg [2:0]        o_hsize,
-        input     [DATA_WDT-1:0]i_hrdata,
-        input                   i_hready,
-        input      [1:0]        i_hresp,
-        input                   i_hgrant,
-        output reg              o_hbusreq,
+        input                       i_hclk,
+        input                       i_hreset_n,
+
+        input                       i_hgrant,
+        input       [DATA_WDT-1:0]  i_hrdata,
+        input                       i_hready,
+        input       [1:0]           i_hresp,
+
+        output reg  [31:0]          o_haddr,
+        output reg  [2:0]           o_hburst,
+        output reg  [2:0]           o_hsize,      // Control signal
+        output reg  [1:0]           o_htrans,
+        output reg  [DATA_WDT-1:0]  o_hwdata,
+        output reg                  o_hwrite,     // Control signal
+        output reg                  o_hbusreq,
+
+        // Full FreeAHB modification
+        output reg [3:0]            o_hprot,      // Control signal
+        output reg                  o_hlock,      // Address phase
+
 
         /************************
          * User interface.
          ************************/
 
-        output reg              o_next,   // UI must change only if this is 1.
-        input     [DATA_WDT-1:0]i_data,   // Data to write. Can change during burst if o_next = 1.
-        input                   i_dav,    // Data to write valid. Can change during burst if o_next = 1.
-        input      [31:0]       i_addr,   // Base address of burst.
-        input      [2:0]        i_size,   // Size of transfer. Like hsize.
-        input                   i_wr,     // Write to AHB bus.
-        input                   i_rd,     // Read from AHB bus.
-        input     [BEAT_WDT-1:0]i_min_len,// Minimum guaranteed length of burst.
-        input                   i_cont,   // Current transfer continues previous one.
-        output reg[DATA_WDT-1:0]o_data,   // Data got from AHB is presented here.
-        output reg[31:0]        o_addr,   // Corresponding address is presented here.
-        output reg              o_dav     // Used as o_data valid indicator.
-); 
+        output reg                  o_next,     // UI must change only if this is 1.
+        input       [DATA_WDT-1:0]  i_data,     // Data to write. Can change during burst if o_next = 1.
+        input                       i_valid,    // Data to write valid. Can change during burst if o_next = 1.
+        input       [31:0]          i_addr,     // Base address of burst.
+        input       [2:0]           i_size,     // Size of transfer. Like hsize.
+        input                       i_write,    // Write to AHB bus.
+        input                       i_read,     // Read from AHB bus.
+        input       [BEAT_WDT-1:0]  i_min_len,  // Minimum guaranteed length of burst.
+        input                       i_cont,     // Current transfer continues previous one.
+        output reg  [DATA_WDT-1:0]  o_data,     // Data got from AHB is presented here.
+        output reg  [31:0]          o_addr,     // Corresponding address is presented here.
+        output reg                  o_ready,     // Used as o_data valid indicator.
+
+        // Also add prot and lock to UI
+        input       [3:0]           i_prot,
+        input                       i_lock
+);
 
 /*
  * NOTE: You can change UI signals at any time if the unit is IDLING.
@@ -86,9 +104,9 @@ module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
  * perhaps connect o_next to read_enable of a FIFO.
  *
  * To go to IDLE, you must follow this...
- *      To set the unit to IDLE mode, make 
- *              i_cont = 0, i_rd = 0 and i_wr = 0 (or) 
- *              i_wr = 1 and i_dav = 0.
+ *      To set the unit to IDLE mode, make
+ *              i_cont = 0, i_read = 0 and i_write = 0 (or)
+ *              i_write = 1 and i_valid = 0.
  * on o_next = 1. As mentioned above, you change UI signals without having
  * o_next = 1 but once changed you must change them again only when o_next = 1.
  *
@@ -127,8 +145,8 @@ localparam [2:0] BYTE   = 0;
 localparam [2:0] HWORD  = 1;
 localparam [2:0] WORD   = 2; /* 32-bit */
 localparam [2:0] DWORD  = 3; /* 64-bit */
-localparam [2:0] BIT128 = 4; 
-localparam [2:0] BIT256 = 5; 
+localparam [2:0] BIT128 = 4;
+localparam [2:0] BIT256 = 5;
 localparam [2:0] BIT512 = 6;
 localparam [2:0] BIT1024 = 7;
 
@@ -143,39 +161,44 @@ localparam B = BEAT_WDT-1;
 reg [4:0]  burst_ctr;       // Small counter to keep track of current burst count.
 reg [B:0]  beat_ctr;        // Counter to keep track of word/beat count.
 
-/* Pipeline flip-flops. */ 
-reg [1:0]  gnt;        
-reg [2:0]  hburst;      // Only for stage 1. 
-reg [D:0]  hwdata [1:0];
+/* Pipeline flip-flops. */
+reg [1:0]  hgrant;        // Only for stage 1.
+reg [2:0]  hburst;        // Only for stage 1.
+reg [D:0]  hwdata [1:0];  // Memory syntax. D+1 size words, [1:0] = 2 words.
 reg [31:0] haddr  [1:0];
 reg [1:0]  htrans [1:0];
-reg [1:0]  hwrite;     
+reg [1:0]  hwrite;        // Only for stage 1.
 reg [2:0]  hsize  [1:0];
-reg [B:0]  beat;        // Only for stage 2.
+reg [B:0]  beat;          // Only for stage 2.
+
+// ADDED FLIP-FLOPS
+reg [3:0]  hprot;         // Only for stage 1.
+reg        hlock;         // Only for stage 1.
+
 
 /* Tracks if we are in a pending state. */
 reg        pend_split;
 
 /***********************
  * Signal aliases.
- ***********************/ 
+ ***********************/
 
 /* Detects the first cycle of split and retry. */
-wire spl_ret_cyc_1 = gnt[1] && !i_hready && (i_hresp == RETRY || i_hresp == SPLIT);
+wire spl_ret_cyc_1 = hgrant[1] && !i_hready && (i_hresp == RETRY || i_hresp == SPLIT);
 
 /* Inputs are valid only if there is a read or if there is a write with valid data. */
-wire rd_wr         = i_rd || (i_wr && i_dav);
+wire rd_wr         = i_read || (i_write && i_valid);
 
 /* Detects that 1k boundary condition will be crossed on next address */
 wire b1k_spec      = (haddr[0] + (1 << i_size)) >> 10 != haddr[0][31:10];
 
 /*******************
  * Misc. logic.
- *******************/ 
+ *******************/
 
-/* Output drivers. */
-always @* {o_haddr, o_hburst, o_htrans, o_hwdata, o_hwrite, o_hsize} = 
-          {haddr[0], hburst, htrans[0], hwdata[1], hwrite[0], hsize[0]};
+/* Output drivers. */ // Adds HPROT and HLOCK
+always @* {o_haddr, o_hburst, o_htrans, o_hwdata, o_hwrite, o_hsize, o_hprot, o_hlock} =
+          {haddr[0], hburst, htrans[0], hwdata[1], hwrite[0], hsize[0], hprot, hlock};
 
 /* UI must change only if this is 1. */
 always @* o_next = (i_hready && i_hgrant && !pend_split);
@@ -183,27 +206,27 @@ always @* o_next = (i_hready && i_hgrant && !pend_split);
 /***********************
  * Grant tracker.
  ***********************/
-/* Passes grant throughout  the pipeline. */
+/* Passes grant throughout the pipeline. */
 always @ (posedge i_hclk or negedge i_hreset_n)
 begin
         if ( !i_hreset_n )
-                gnt <= 2'd0;
+                hgrant <= 2'd0;
         else if ( spl_ret_cyc_1 )
-                gnt <= 2'd0; /* A split retry cycle 1 will invalidate the pipeline. */
+                hgrant <= 2'd0; /* A split retry cycle 1 will invalidate the pipeline. */
         else if ( i_hready )
-                gnt <= {gnt[0], i_hgrant};
+                hgrant <= {hgrant[0], i_hgrant};
 end
 
 /**************************
  * Bus request
- **************************/ 
+ **************************/
 always @ (posedge i_hclk or negedge i_hreset_n)
 begin
-        /* Request bus when doing reads/writes else do not request bus */
+        /* Request bus when doing reads/writes else do not request bus */ // TODO: But does this not also request the bus even after we have it granted?
         if ( !i_hreset_n )
                 o_hbusreq <= 1'd0;
         else
-                o_hbusreq <= i_rd | i_wr;
+                o_hbusreq <= i_read | i_write;
 end
 
 /******************************
@@ -224,7 +247,7 @@ begin
         end
         else if ( i_hready && i_hgrant )
         begin
-                pend_split <= 1'd0; /* Any pending split will be cleared */
+                pend_split <= 1'd0; /* Any pending split will be cleared */ //TODO: But doesnt this make the first case under here unreachable?
 
                 if ( pend_split )
                 begin
@@ -240,26 +263,33 @@ begin
                 end
                 else
                 begin
-                        {hwdata[0], hwrite[0], hsize[0]} <= {i_data, i_wr, i_size}; 
+                        {hwdata[0], hwrite[0], hsize[0]} <= {i_data, i_write, i_size};
 
                         if ( !i_cont && !rd_wr ) /* Signal IDLE. */
                         begin
                                 htrans[0] <= IDLE;
                         end
-                        else if ( (!i_cont && rd_wr) || !gnt[0] || (burst_ctr == 1 && o_hburst != INCR) 
-                                     || htrans[0] == IDLE || b1k_spec )
+                        else if ( (!i_cont && rd_wr) || !hgrant[0] || (burst_ctr == 1 && o_hburst != INCR)
+                                     || htrans[0] == IDLE || b1k_spec ) // Second case: If we previously were not granted the bus.
+                                                                        // TODO: Can the burst really be changed mid-transfer?
+                                                                        // I guess this is in regards with split/retry restarting.
                         begin
                                 /* We need to recompute the burst type here */
 
-                                haddr[0]  <= !i_cont ? i_addr : haddr[0] + (rd_wr << i_size);
-                                hburst    <= compute_hburst   (!i_cont ? i_min_len : beat_ctr,    
+                                haddr[0]  <= !i_cont ? i_addr : haddr[0] + (rd_wr << i_size); // If this is not mid-burst?
+                                hburst    <= compute_hburst   (!i_cont ? i_min_len : beat_ctr,
                                                                !i_cont ? i_addr : haddr[0] + (rd_wr << i_size) , i_size);
                                 htrans[0] <= rd_wr ? NONSEQ : IDLE;
 
-                                burst_ctr <= compute_burst_ctr(!i_cont ? i_min_len : beat_ctr - rd_wr, 
-                                                               !i_cont ? i_addr : haddr[0] + (rd_wr << i_size) , i_size); 
+                                burst_ctr <= compute_burst_ctr(!i_cont ? i_min_len : beat_ctr - rd_wr,
+                                                               !i_cont ? i_addr : haddr[0] + (rd_wr << i_size) , i_size);
 
-                                beat_ctr  <= !i_cont ? i_min_len : ((hburst == INCR) ? beat_ctr : beat_ctr - rd_wr); 
+                                beat_ctr  <= !i_cont ? i_min_len : ((hburst == INCR) ? beat_ctr : beat_ctr - rd_wr);
+
+                                // TODO: Test if this suffices for prot..
+                                hprot <= i_prot;
+                                hlock <= i_lock;
+
                         end
                         else
                         begin
@@ -270,35 +300,35 @@ begin
                                 burst_ctr <= o_hburst == INCR ? burst_ctr : (burst_ctr - rd_wr);
                                 beat_ctr  <= o_hburst == INCR ? beat_ctr  : (beat_ctr  - rd_wr);
                         end
-                end 
+                end
         end
 end
 
 /******************************
- * HWDATA phase. Stage II.
+ * STAGE II: HWDATA version (Write transfer(s))
  ******************************/
 always @ (posedge i_hclk)
 begin
-        if ( i_hready && gnt[0] )
-                {hwdata[1], haddr[1], hwrite[1], hsize[1], htrans[1], beat} <= 
-                {hwdata[0], haddr[0], hwrite[0], hsize[0], htrans[0], beat_ctr};                 
+        if ( i_hready && hgrant[0] ) /* If current write is successfull, and this is the next in a sequence.*/
+                {hwdata[1], haddr[1], hwrite[1], hsize[1], htrans[1], beat} <=
+                {hwdata[0], haddr[0], hwrite[0], hsize[0], htrans[0], beat_ctr};
 end
 
 /********************************
- * HRDATA phase. Stage III.
+ * STAGE II: HRDATA version (Read transfer(s))
  ********************************/
 always @ (posedge i_hclk or negedge i_hreset_n)
 begin
-        if ( !i_hreset_n )
-                o_dav <= 1'd0;
-        else if ( gnt[1] && i_hready && (htrans[1] == SEQ || htrans[1] == NONSEQ) )
+        if ( !i_hreset_n ) // HRESET is the only active low signal.
+                o_ready <= 1'd0;
+        else if ( hgrant[1] && i_hready && (htrans[1] == SEQ || htrans[1] == NONSEQ) )
         begin
-                o_dav  <= !hwrite[1];
+                o_ready  <= !hwrite[1];
                 o_data <= i_hrdata;
                 o_addr <= haddr[1];
         end
         else
-                o_dav <= 1'd0;
+                o_ready <= 1'd0;
 end
 
 /*****************************
@@ -362,15 +392,15 @@ begin
         INCR8:  HBURST = "INCR8";
         INCR16: HBURST = "INCR16";
         default:HBURST = "<----?????--->";
-        endcase 
+        endcase
 
         case(o_htrans)
         SINGLE: HTRANS = "IDLE";
-        BUSY:   HTRANS = "BUSY";  
-        SEQ:    HTRANS = "SEQ";   
+        BUSY:   HTRANS = "BUSY";
+        SEQ:    HTRANS = "SEQ";
         NONSEQ: HTRANS = "NONSEQ";
         default:HTRANS = "<----?????--->";
-        endcase 
+        endcase
 
         case(i_hresp)
         OKAY:   HRESP = "OKAY";
@@ -385,8 +415,8 @@ begin
         HWORD   : HSIZE = "16BIT";
         WORD    : HSIZE = "32BIT"; // 32-bit
         DWORD   : HSIZE = "64BIT"; // 64-bit
-        BIT128  : HSIZE = "128BIT"; 
-        BIT256  : HSIZE = "256BIT"; 
+        BIT128  : HSIZE = "128BIT";
+        BIT256  : HSIZE = "256BIT";
         BIT512  : HSIZE = "512BIT";
         BIT1024 : HSIZE = "1024BIT";
         default : HSIZE = "<---?????--->";

@@ -39,7 +39,7 @@ logic [DATA_WDT-1:0] hwdata0, hwdata1;
 assign hwdata0 = U_AHB_MASTER.o_hwdata[0];
 assign hwdata1 = U_AHB_MASTER.o_hwdata[1];
 
-ahb_master      #(.DATA_WDT(DATA_WDT), .BEAT_WDT(BEAT_WDT)) U_AHB_MASTER    (.*); 
+ahb_master      #(.DATA_WDT(DATA_WDT), .BEAT_WDT(BEAT_WDT)) U_AHB_MASTER    (.*);
 
 ahb_slave_sim   #(.DATA_WDT(DATA_WDT))                      U_AHB_SLAVE_SIM_1 (
 
@@ -97,7 +97,7 @@ begin
         i_data    <= 0;    // First data is 0.
 
         // Further change requires o_next.
-        wait_for_next;       
+        wait_for_next;
 
         // Write to the unit as if reading from a FIFO with intermittent
         // FIFO empty conditions shown as dav = 0.
@@ -110,7 +110,7 @@ begin
                 i_dav     <= dav;
 
                 // This technique is called x-injection.
-                i_data    <= dav ? dat : 
+                i_data    <= dav ? dat :
                 `ifdef X_INJECTION
                         32'dx;
                 `else
@@ -139,7 +139,7 @@ task wait_for_next;
 endtask
 
 task d(int x);
-        repeat(x) 
+        repeat(x)
         @(posedge i_hclk);
 endtask
 
