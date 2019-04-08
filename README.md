@@ -1,5 +1,7 @@
 # FreeAHB (Experimental)
 
+This fork is working on adding the full spec (HLOCK and HPROT missing), and testing it on a verified AHB bus environment. We also hope to add wrapping bursts and verification for all possible behaviors (especially SPLIT, RETRY, and ERROR slave responses)
+
 Author: Revanth Kamaraj (revanth91kamaraj@gmail.com)
 
 This repository currently provides an AHB 2.0 Master.
