@@ -43,7 +43,6 @@
  * - Rename i_valid to i_valid and o_dav to o_ready to make it more clear what the signals are.
 */
 
-`define SIM 1
 
 module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
         /************************
