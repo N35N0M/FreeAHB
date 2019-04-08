@@ -43,8 +43,8 @@
  * - Rename i_valid to i_valid and o_dav to o_ready to make it more clear what the signals are.
 */
 
-// Stage 1 refers to the address and control stage.
-// Stage 2 refers to the data phase(s) that follow.
+`define SIM 1
+
 module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
         /************************
          * AHB interface.
@@ -211,8 +211,8 @@ always @ (posedge i_hclk or negedge i_hreset_n)
 begin
         if ( !i_hreset_n )
                 hgrant <= 2'd0;
-        else if ( spl_ret_cyc_1 )
-                hgrant <= 2'd0; /* A split retry cycle 1 will invalidate the pipeline. */
+        else if ( spl_ret_cyc_1 && i_hresp == SPLIT)
+                hgrant <= 2'd0; /* A split retry cycle 1 AND a second split will invalidate the pipeline. TODO: Should also be HREADY*/
         else if ( i_hready )
                 hgrant <= {hgrant[0], i_hgrant};
 end
@@ -247,11 +247,11 @@ begin
         end
         else if ( i_hready && i_hgrant )
         begin
-                pend_split <= 1'd0; /* Any pending split will be cleared */ //TODO: But doesnt this make the first case under here unreachable?
+                pend_split <= 1'd0; /* Any pending split will be cleared, unblocking assignment = value accessible on next event. */
 
-                if ( pend_split )
+                if ( pend_split && i_hresp == SPLIT)
                 begin
-                        /* If there's a pending split, perform a pipeline rollback */
+                        /* If there's a pending split this cycle, perform a pipeline rollback */
 
                         {hwdata[0], hwrite[0], hsize[0]} <= {hwdata[1], hwrite[1], hsize[1]};
 
@@ -265,17 +265,19 @@ begin
                 begin
                         {hwdata[0], hwrite[0], hsize[0]} <= {i_data, i_write, i_size};
 
+                        // If a transfer has not continued, and there is no valid data.
                         if ( !i_cont && !rd_wr ) /* Signal IDLE. */
                         begin
                                 htrans[0] <= IDLE;
                         end
+
+                        // If it is the potential start of a transfer, or if we are crossing address boundaries.
+                        // Determine if we should start a transfer, or conditions say we are idle
+                        // TODO: Would it be better to split these? Are all the cases really necessary?
                         else if ( (!i_cont && rd_wr) || !hgrant[0] || (burst_ctr == 1 && o_hburst != INCR)
-                                     || htrans[0] == IDLE || b1k_spec ) // Second case: If we previously were not granted the bus.
-                                                                        // TODO: Can the burst really be changed mid-transfer?
-                                                                        // I guess this is in regards with split/retry restarting.
+                                     || htrans[0] == IDLE || b1k_spec )
                         begin
                                 /* We need to recompute the burst type here */
-
                                 haddr[0]  <= !i_cont ? i_addr : haddr[0] + (rd_wr << i_size); // If this is not mid-burst?
                                 hburst    <= compute_hburst   (!i_cont ? i_min_len : beat_ctr,
                                                                !i_cont ? i_addr : haddr[0] + (rd_wr << i_size) , i_size);
@@ -286,15 +288,15 @@ begin
 
                                 beat_ctr  <= !i_cont ? i_min_len : ((hburst == INCR) ? beat_ctr : beat_ctr - rd_wr);
 
-                                // TODO: Test if this suffices for prot..
                                 hprot <= i_prot;
                                 hlock <= i_lock;
 
                         end
+
+                        // This is in the middle of an uninterrupted burst.
+                        // Insert a busy if the data is not yet valid, else call it sequential.
                         else
                         begin
-                                /* We are in a normal burst. No need to change HBURST. */
-
                                 haddr[0]  <= haddr[0] + ((htrans[0] != BUSY) << i_size);
                                 htrans[0] <= rd_wr ? SEQ : BUSY;
                                 burst_ctr <= o_hburst == INCR ? burst_ctr : (burst_ctr - rd_wr);
