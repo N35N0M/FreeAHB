@@ -1,11 +1,20 @@
 # FreeAHB (Experimental)
+Original author: Revanth Kamaraj (revanth91kamaraj@gmail.com)
+Somewhat extended by: Kris Monsen
 
-This fork is working on adding the full spec (HLOCK and HPROT missing), and testing it on a verified AHB bus environment. We also hope to add wrapping bursts and verification for all possible behaviors (especially SPLIT, RETRY, and ERROR slave responses)
+Modifications:
+- Adds bash script for running simulator.
+- Adds HLOCK and HPROT signals, which were missing in the original design.
+- Renames some variables in order to clarify what they do. o_dav is instead o_ready (the outputted data is ready) to follow the standard valid-ready memory request cycle.
+- Else... very little so far. We hope to add wrapping burst functionality sometime early summer, then add a sample slave and arbiter as well (currently the TBs only mimic the two). Right now this is just used as part of a thesis design which is prioritized over a fully functional AHB master (most masters can make do with single transfers). 
 
-Author: Revanth Kamaraj (revanth91kamaraj@gmail.com)
+
+END OF FORK README
+START OF ORIGINAL README
 
 This repository currently provides an AHB 2.0 Master.
 Icarus Verilog 10.0 or higher is required to simulate the design.
+
 
 ## Features of the AHB master:
 
