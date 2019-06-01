@@ -43,6 +43,8 @@
  * - Rename i_valid to i_valid and o_dav to o_ready to make it more clear what the signals are.
 */
 
+`define DEBUG
+
 // Stage 1 refers to the address and control stage.
 // Stage 2 refers to the data phase(s) that follow.
 module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
@@ -341,8 +343,9 @@ begin
         compute_hburst =        (val >= 16 && no_cross(addr, 15, sz)) ? INCR16 :
                                 (val >= 8  && no_cross(addr, 7, sz))  ? INCR8 :
                                 (val >= 4  && no_cross(addr, 3, sz))  ? INCR4 : INCR;
-
-        $display($time, "val = %d, addr = %d, sz = %d, compute_hburst = %d", val, addr, sz, compute_hburst);
+        `ifdef DEBUG
+        $display($time, "val = %d, addr = %h, sz = %b, compute_hburst = %d", val, addr, sz, compute_hburst);
+        `endif
 end
 endfunction
 
@@ -351,8 +354,9 @@ begin
         compute_burst_ctr =     (val >= 16 && no_cross(addr, 15, sz)) ? 5'd16 :
                                 (val >= 8  && no_cross(addr, 7, sz))  ? 5'd8  :
                                 (val >= 4 && no_cross(addr, 3, sz))   ? 5'd4  : 5'd0;
-
-        $display($time, "val = %d, addr = %d, sz = %d, compute_burst_ctr = %d", val, addr, sz, compute_burst_ctr);
+        `ifdef DEBUG
+        $display($time, "val = %d, addr = %h, sz = %b, compute_burst_ctr = %d", val, addr, sz, compute_burst_ctr);
+        `endif
 end
 endfunction
 
