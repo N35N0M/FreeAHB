@@ -30,16 +30,16 @@ parameter BEAT_WDT = 32;
         // User interface.
         logic                     o_next;   // UI must change only if this is 1.
         logic   [DATA_WDT-1:0]    i_data;   // Data to write. Can change during burst if o_next = 1.
-        bit                       i_valid;    // Data to write valid. Can change during burst if o_next = 1.
+        bit                       i_dav;    // Data to write valid. Can change during burst if o_next = 1.
         bit     [31:0]            i_addr;   // Base address of burst.
         bit     [2:0]             i_size;   // Size of transfer. Like hsize.
-        bit                       i_write;     // Write to AHB bus.
-        bit                       i_read;     // Read from AHB bus.
+        bit                       i_wr;     // Write to AHB bus.
+        bit                       i_rd;     // Read from AHB bus.
         bit     [BEAT_WDT-1:0]    i_min_len;// Minimum guaranteed length of burst.
         bit                       i_cont;   // Current transfer continues previous one.
         logic   [DATA_WDT-1:0]    o_data;   // Data got from AHB is presented here.
         logic   [31:0]            o_addr;   // Corresponding address is presented here.
-        logic                     o_ready;    // Used as o_data valid indicator.
+        logic                     o_dav;    // Used as o_data valid indicator.
 
         logic   [3:0]             i_prot;
         logic                     i_lock;
@@ -98,17 +98,17 @@ begin
         i_hreset_n  <= 1'd1;
 
         // Set IDLE for some time.
-        i_read      <= 0;
-        i_write     <= 0;
+        i_rd      <= 0;
+        i_wr     <= 0;
 
         repeat(10) @(posedge i_hclk);
 
         // We can change inputs at any time.
         // Starting a write burst.
         i_min_len     <= 42;
-        i_write       <= 1'd1;
+        i_wr       <= 1'd1;
         i_cont        <= 1'd0; // First txn.
-        i_valid       <= 1'd1; // First UI of a write burst must have valid data.
+        i_dav       <= 1'd1; // First UI of a write burst must have valid data.
         i_data        <= 0;    // First data is 0.
         i_lock        <= 1;
         i_prot        <= 4'b0001; // Noncacheable, nonbufferable, nonpriviledged, data access
@@ -124,7 +124,7 @@ begin
                 dat = dat + dav;
 
                 i_cont      <= 1'd1;
-                i_valid     <= dav;
+                i_dav     <= dav;
 
                 // This technique is called x-injection.
                 i_data    <= dav ? dat :
@@ -138,8 +138,8 @@ begin
         end
 
         // Go to IDLE.
-        i_read    <= 1'd0;
-        i_write   <= 1'd0;
+        i_rd    <= 1'd0;
+        i_wr   <= 1'd0;
         i_cont    <= 1'd0;
 
 
@@ -151,17 +151,17 @@ begin
         i_hreset_n <= 1'd1;
 
         // Set IDLE for some time.
-        i_read  <= 0;
-        i_write <= 0;
+        i_rd  <= 0;
+        i_wr <= 0;
 
         repeat(20) @(posedge i_hclk);
 
         // We can change inputs at any time.
         // Starting a write burst.
         i_min_len     <= 42;
-        i_write       <= 1'd1;
+        i_wr       <= 1'd1;
         i_cont        <= 1'd0; // First txn.
-        i_valid       <= 1'd1; // First UI of a write burst must have valid data.
+        i_dav       <= 1'd1; // First UI of a write burst must have valid data.
         i_data        <= 0;    // First data is 0.
         i_lock        <= 1;
         i_prot        <= 4'b0001; // Noncacheable, nonbufferable, nonpriviledged, data access
@@ -179,7 +179,7 @@ begin
                 dat = dat + dav;
 
                 i_cont      <= 1'd1;
-                i_valid     <= dav;
+                i_dav     <= dav;
 
                 // This technique is called x-injection.
                 i_data    <= dav ? dat :
@@ -193,8 +193,8 @@ begin
         end
 
         // Go to IDLE.
-        i_read    <= 1'd0;
-        i_write   <= 1'd0;
+        i_rd    <= 1'd0;
+        i_wr   <= 1'd0;
         i_cont    <= 1'd0;
 
         repeat(10) @(posedge i_hclk);

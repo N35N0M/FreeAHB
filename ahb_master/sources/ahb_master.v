@@ -40,7 +40,7 @@
 
 /* Customizations:
  * - Add HPROT and HLOCK signals, which are missing signals from the standard.
- * - Rename i_valid to i_valid and o_dav to o_ready to make it more clear what the signals are.
+ * - Rename i_dav to i_dav and o_dav to o_dav to make it more clear what the signals are.
 */
 
 // Stage 1 refers to the address and control stage.
@@ -77,16 +77,16 @@ module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
 
         output reg                  o_next,     // UI must change only if this is 1.
         input       [DATA_WDT-1:0]  i_data,     // Data to write. Can change during burst if o_next = 1.
-        input                       i_valid,    // Data to write valid. Can change during burst if o_next = 1.
+        input                       i_dav,    // Data to write valid. Can change during burst if o_next = 1.
         input       [31:0]          i_addr,     // Base address of burst.
         input       [2:0]           i_size,     // Size of transfer. Like hsize.
-        input                       i_write,    // Write to AHB bus.
-        input                       i_read,     // Read from AHB bus.
+        input                       i_wr,    // Write to AHB bus.
+        input                       i_rd,     // Read from AHB bus.
         input       [BEAT_WDT-1:0]  i_min_len,  // Minimum guaranteed length of burst.
         input                       i_cont,     // Current transfer continues previous one.
         output reg  [DATA_WDT-1:0]  o_data,     // Data got from AHB is presented here.
         output reg  [31:0]          o_addr,     // Corresponding address is presented here.
-        output reg                  o_ready,     // Used as o_data valid indicator.
+        output reg                  o_dav,     // Used as o_data valid indicator.
 
 
         // Also add prot and lock to UI
@@ -106,8 +106,8 @@ module ahb_master #(parameter DATA_WDT = 32, parameter BEAT_WDT = 32) (
  *
  * To go to IDLE, you must follow this...
  *      To set the unit to IDLE mode, make
- *              i_cont = 0, i_read = 0 and i_write = 0 (or)
- *              i_write = 1 and i_valid = 0.
+ *              i_cont = 0, i_rd = 0 and i_wr = 0 (or)
+ *              i_wr = 1 and i_dav = 0.
  * on o_next = 1. As mentioned above, you change UI signals without having
  * o_next = 1 but once changed you must change them again only when o_next = 1.
  *
@@ -188,7 +188,7 @@ reg        pend_split;
 wire spl_ret_cyc_1 = hgrant[1] && !i_hready && (i_hresp == RETRY || i_hresp == SPLIT);
 
 /* Inputs are valid only if there is a read or if there is a write with valid data. */
-wire rd_wr         = i_read || (i_write && i_valid);
+wire rd_wr         = i_rd || (i_wr && i_dav);
 
 /* Detects that 1k boundary condition will be crossed on next address */
 wire b1k_spec      = (haddr[0] + (1 << i_size)) >> 10 != haddr[0][31:10];
@@ -228,7 +228,7 @@ begin
         if ( !i_hreset_n )
                 o_hbusreq <= 1'd0;
         else
-                o_hbusreq <= i_read | i_write;
+                o_hbusreq <= i_rd | i_wr;
 end
 
 /******************************
@@ -265,7 +265,7 @@ begin
                 end
                 else
                 begin
-                        {hwdata[0], hwrite[0], hsize[0]} <= {i_data, i_write, i_size};
+                        {hwdata[0], hwrite[0], hsize[0]} <= {i_data, i_wr, i_size};
 
                         if ( !i_cont && !rd_wr ) /* Signal IDLE. */
                         begin
@@ -322,15 +322,15 @@ end
 always @ (posedge i_hclk or negedge i_hreset_n)
 begin
         if ( !i_hreset_n ) // HRESET is the only active low signal.
-                o_ready <= 1'd0;
+                o_dav <= 1'd0;
         else if ( hgrant[1] && i_hready && (htrans[1] == SEQ || htrans[1] == NONSEQ) )
         begin
-                o_ready  <= !hwrite[1];
+                o_dav  <= !hwrite[1];
                 o_data <= i_hrdata;
                 o_addr <= haddr[1];
         end
         else
-                o_ready <= 1'd0;
+                o_dav <= 1'd0;
 end
 
 /*****************************
