@@ -43,7 +43,7 @@
  * - Rename i_dav to i_dav and o_dav to o_dav to make it more clear what the signals are.
 */
 
-`define DEBUG
+//`define DEBUG
 
 // Stage 1 refers to the address and control stage.
 // Stage 2 refers to the data phase(s) that follow.
